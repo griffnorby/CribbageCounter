@@ -1,43 +1,68 @@
 ﻿using Cards;
 using System.Text.RegularExpressions;
 
-Console.WriteLine("Enter your hand, then press Enter");
+Start();
 
-HandParser parser = new();
-
-parser.Parse(Console.ReadLine());
-
-Console.WriteLine("Enter the cut card(s), then press Enter");
-
-parser.Parse(Console.ReadLine());
-
-CardCollection? hand = parser.Hand;
-CardCollection? cutCards = parser.Cuts;
-
-if(hand is not null && cutCards is not null)
+static void Start()
 {
-    HandCounter counter = new HandCounter(hand, cutCards);
+    Console.WriteLine("Enter your hand, then press Enter");
 
-    int fifteens = counter.GetFifteens();
-    int pairs = counter.GetPairs();
-    int runs = counter.GetRuns();
-    int knobs = counter.GetKnobs();
-    int flush = counter.GetFlush();
-    int points = fifteens + pairs + runs + knobs + flush;
+    HandParser parser = new();
 
-    Console.WriteLine("");
+    parser.Parse(Console.ReadLine());
 
-    Console.WriteLine("Fifteens: " + fifteens);
-    Console.WriteLine("Pairs: " + pairs);
-    Console.WriteLine("Runs: " + runs);
-    Console.WriteLine("Knobs: " + knobs);
-    Console.WriteLine("Flush: " + flush);
-    Console.WriteLine("Points: " + points);
+    Console.WriteLine("Enter the cut card(s), then press Enter");
 
-    Console.WriteLine("");
+    parser.Parse(Console.ReadLine());
 
-    Console.Write("Press any key to continue...");
-    Console.ReadKey(true);
+    CardCollection? hand = parser.Hand;
+    CardCollection? cuts = parser.Cuts;
+
+    if (hand is not null && cuts is not null)
+    {
+        HandCounter counter = new HandCounter(hand, cuts);
+
+        int fifteens = counter.GetFifteens();
+        int pairs = counter.GetPairs();
+        int runs = counter.GetRuns();
+        int knobs = counter.GetKnobs();
+        int flush = counter.GetFlush();
+        int points = fifteens + pairs + runs + knobs + flush;
+
+        Console.WriteLine("");
+
+        Console.WriteLine("Fifteens: " + fifteens);
+        Console.WriteLine("Pairs: " + pairs);
+        Console.WriteLine("Runs: " + runs);
+        Console.WriteLine("Knobs: " + knobs);
+        Console.WriteLine("Flush: " + flush);
+        Console.WriteLine("Points: " + points);
+
+        Console.WriteLine("");
+
+        Console.WriteLine("Fiteens Importance Coefficients:");
+
+        counter.FifteensPerCard.Keys
+            .Where(card => counter.FifteensPerCard[card] != 0)
+            .ToList()
+            .ForEach(card => Console.WriteLine("[" + card.Name + "]: " + ((double)counter.FifteensPerCard[card] / fifteens)));
+
+        Console.WriteLine("");
+
+        Console.WriteLine("Pairs and Runs Importance Coefficients:");
+
+        counter.PairsPerCard.Keys
+            .Where(card => counter.PairsPerCard[card] + counter.RunsPerCard[card] != 0)
+            .ToList()
+            .ForEach(card => Console.WriteLine("[" + card.Name + "]: " + ((double)(counter.PairsPerCard[card] + counter.RunsPerCard[card]) / (pairs + runs))));
+
+        Console.WriteLine("");
+
+        Console.Write("Press any key to continue...\n");
+        Console.ReadKey(true);
+
+        Start();
+    }
 }
 
 namespace Cards
@@ -311,6 +336,9 @@ namespace Cards
         public CardCollection Cuts { get; init; }
         public CardCollection MergedHand { get; init; }
         public List<Relationship> Relationships { get; init; }
+        public Dictionary<Card, int> FifteensPerCard { get; init; }
+        public Dictionary<Card, int> PairsPerCard { get; init; }
+        public Dictionary<Card, int> RunsPerCard { get; init; }
 
         public HandCounter(CardCollection hand, CardCollection cuts)
         {
@@ -323,18 +351,51 @@ namespace Cards
             MergedHand.Sort();
 
             this.Relationships = Relationship.CreateRelationships(MergedHand);
+            this.FifteensPerCard = new();
+            this.PairsPerCard = new();
+            this.RunsPerCard = new();
+
+            MergedHand.Cards.ForEach(card =>
+            {
+                FifteensPerCard[card] = 0;
+                PairsPerCard[card] = 0;
+                RunsPerCard[card] = 0;
+            });
         }
 
         public int GetFifteens()
         {
-            return Relationships.Sum(relationship => relationship.IsFifteen ? 2 : 0); //y = 2x where x is the number of relationships that sum to 15
+            return Relationships.Sum(relationship =>
+            {
+                if(!relationship.IsFifteen)
+                {
+                    return 0;
+                }
+
+                relationship.Cards
+                    .ForEach(card => FifteensPerCard[card] += 2);
+
+                return 2; //y = 2x where x is the number of relationships that sum to 15
+            });
         }
 
         public int GetPairs()
         {
             return Relationships
                 .Where(relationship => relationship.Count == 2) //Filter only relationships that have 2 cards
-                .Sum(relationship => relationship.IsPair ? 2 : 0); //y = 2x where x is the number of relationships that are pairs
+                .Sum(relationship => //y = 2x where x is the number of relationships that are pairs
+                {
+                    if(!relationship.IsPair)
+                    {
+                        return 0;
+                    }
+                    
+                    List<Card> cards = relationship.Cards;
+
+                    cards.ForEach(card => PairsPerCard[card] += 2);
+
+                    return 2;
+                });
         }
 
         private int GetRuns(CardCollection hand)
@@ -344,11 +405,15 @@ namespace Cards
 
             int count = hand.Count;
 
-            if(MergedHand.Clone() is not CardCollection clone) throw new InvalidCastException();
+            if(hand.Clone() is not CardCollection clone) throw new InvalidCastException();
 
             int offset = 0;
 
             Card? previous = null;
+
+            Dictionary<Card, int> multipliers = new();
+
+            hand.Cards.ForEach(card => multipliers[card] = 1);
 
             for(int index = 0; index < count - 1; index++) //Domain [0, x-1] where x is the number of cards in the hand
             {
@@ -357,16 +422,22 @@ namespace Cards
 
                 if(current.Denomination == next.Denomination) //If the first and second cards' denominations match
                 {
-                    if (previous is not null && current.Denomination == previous.Denomination) //And if the previous card exists and is the same denomination
+                    if(previous is not null && current.Denomination == previous.Denomination) //And if the previous card exists and is the same denomination
                     {
-                        multiplier += multiplier == 3 ? 1 : (multiplier / 2); //And if there are 3 unique combinations already, add 1; otherwise, add half the number of unique combinations
+                        int addend = multiplier == 3 ? 1 : (multiplier / 2); //And if there are 3 unique combinations already, add 1; otherwise, add half the number of unique combinations
+
+                        multiplier += addend;
+                        multipliers[next] = multipliers[current] = multipliers[previous] += addend;
                     }
                     else
                     {
-                        multiplier *= 2; //Otherwise, double the multiplier
+                        int factor = 2; //Otherwise, double the multiplier
+
+                        multiplier *= factor;
+                        multipliers[next] = multipliers[current] *= factor;
                     }
 
-                    previous = next;
+                    previous = current;
                 }
                 else if(current.Denomination.Precedes(next.Denomination)) //If the first card comes exactly one before the second card, i.e. 2, 3
                 {
@@ -389,6 +460,13 @@ namespace Cards
 
             if(length >= 3) //If the run exists
             {
+                for(int index = 0; index < offset + 1; index++)
+                {
+                    Card card = hand[index];
+
+                    RunsPerCard[card] += length * multipliers[card];
+                }
+
                 return (length * multiplier) + this.GetRuns(clone); //y1 = (x1 * z1) + y2 + y3 + ... + yn where x1 is the length of the run, z1 is the number of unique combinations the run makes, and yn is the point value of any subsequent runs
             }
 
@@ -404,14 +482,15 @@ namespace Cards
         {
             return Hand.Cards
                 .Where(card => card.Denomination == Denominations.JACK) //Filter only cards in the hand that are Jacks
-                .Sum(card => Cuts.Cards.Count(cutCard => card.Suit == cutCard.Suit)); //y = x where x is the number of cut cards that match the suit of any Jacks in the hand
+                .Sum(card => Cuts.Cards.Count(cut => card.Suit == cut.Suit));
         }
 
         public int GetFlush()
         {
             return Hand.Cards
                 .Skip(1)
-                .All(card => card.Suit == Hand.FirstCard.Suit) ? Hand.Count + Cuts.Cards.Count(card => card.Suit == Hand.FirstCard.Suit) : 0; //y = x + z; Domain [x, x+z] where x and z are the number of cards that match the suit of the first card from the hand and cut cards, respectively
+                .All(card => card.Suit == Hand.FirstCard.Suit) ? Hand.Count + Cuts.Cards
+                    .Count(cut => cut.Suit == Hand.FirstCard.Suit) : 0; //y = x + z; Domain [x, x+z] where x and z are the number of cards that match the suit of the first card from the hand and cut cards, respectively
         }
     }
 }
