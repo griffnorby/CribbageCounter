@@ -1,496 +1,394 @@
-﻿using Cards;
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 
-Start();
-
-static void Start()
+namespace CribbageCounter
 {
-    Console.WriteLine("Enter your hand, then press Enter");
-
-    HandParser parser = new();
-
-    parser.Parse(Console.ReadLine());
-
-    Console.WriteLine("Enter the cut card(s), then press Enter");
-
-    parser.Parse(Console.ReadLine());
-
-    CardCollection? hand = parser.Hand;
-    CardCollection? cuts = parser.Cuts;
-
-    if (hand is not null && cuts is not null)
+    public class CribbageCounter
     {
-        HandCounter counter = new HandCounter(hand, cuts);
-
-        int fifteens = counter.GetFifteens();
-        int pairs = counter.GetPairs();
-        int runs = counter.GetRuns();
-        int knobs = counter.GetKnobs();
-        int flush = counter.GetFlush();
-        int points = fifteens + pairs + runs + knobs + flush;
-
-        Console.WriteLine("");
-
-        Console.WriteLine("Fifteens: " + fifteens);
-        Console.WriteLine("Pairs: " + pairs);
-        Console.WriteLine("Runs: " + runs);
-        Console.WriteLine("Knobs: " + knobs);
-        Console.WriteLine("Flush: " + flush);
-        Console.WriteLine("Points: " + points);
-
-        Console.WriteLine("");
-
-        Console.WriteLine("Fiteens Importance Coefficients:");
-
-        counter.FifteensPerCard.Keys
-            .Where(card => counter.FifteensPerCard[card] != 0)
-            .ToList()
-            .ForEach(card => Console.WriteLine("[" + card.Name + "]: " + ((double)counter.FifteensPerCard[card] / fifteens)));
-
-        Console.WriteLine("");
-
-        Console.WriteLine("Pairs and Runs Importance Coefficients:");
-
-        counter.PairsPerCard.Keys
-            .Where(card => counter.PairsPerCard[card] + counter.RunsPerCard[card] != 0)
-            .ToList()
-            .ForEach(card => Console.WriteLine("[" + card.Name + "]: " + ((double)(counter.PairsPerCard[card] + counter.RunsPerCard[card]) / (pairs + runs))));
-
-        Console.WriteLine("");
-
-        Console.Write("Press any key to continue...\n");
-        Console.ReadKey(true);
-
-        Start();
-    }
-}
-
-namespace Cards
-{
-    public class Denomination : IComparable<Denomination>
-    {
-        public string Name { get; init; }
-        public int ArithmeticValue { get; init; }
-        public int SequentialValue { get; init; }
-        
-        public Denomination(string name, int value)
+        public static void Main(string[] args)
         {
-            this.Name = name;
-            this.ArithmeticValue = Math.Min(value, 10);
-            this.SequentialValue = value;
-        }
-
-        public static int operator +(Denomination left, Denomination right) => left.ArithmeticValue + right.ArithmeticValue;
-
-        public static int operator -(Denomination left, Denomination right) => left.ArithmeticValue - right.ArithmeticValue;
-
-        public static bool operator ==(Denomination left, Denomination right) => left.Equals(right);
-
-        public static bool operator !=(Denomination left, Denomination right) => !(left == right);
-
-        public static bool operator <(Denomination left, Denomination right) => left.SequentialValue < right.SequentialValue;
-
-        public static bool operator >(Denomination left, Denomination right) => left.SequentialValue > right.SequentialValue;
-
-        public static bool operator <=(Denomination left, Denomination right) => left.SequentialValue <= right.SequentialValue;
-
-        public static bool operator >=(Denomination left, Denomination right) => left.SequentialValue >= right.SequentialValue;
-
-        public bool Precedes(Denomination denomination) => denomination - this == 1;
-
-        public bool Follows(Denomination denomination) => this - denomination == 1;
-
-        public int CompareTo(Denomination? other) => other is null ? 1 : SequentialValue.CompareTo(other.SequentialValue);
-
-        public override bool Equals(object? obj) =>
-            (obj is Denomination denomination && SequentialValue.Equals(denomination.SequentialValue)) ||
-            (obj is string name && Name.Equals(name)) ||
-            (obj is int value && SequentialValue.Equals(value));
-
-        public override int GetHashCode() => (Name, ArithmeticValue, SequentialValue).GetHashCode();
-
-        public static Denomination Parse(string name) => name.ToUpper() switch
-        {
-            "A" => Denominations.ACE,
-            "2" => Denominations.TWO,
-            "3" => Denominations.THREE,
-            "4" => Denominations.FOUR,
-            "5" => Denominations.FIVE,
-            "6" => Denominations.SIX,
-            "7" => Denominations.SEVEN,
-            "8" => Denominations.EIGHT,
-            "9" => Denominations.NINE,
-            "10" => Denominations.TEN,
-            "J" => Denominations.JACK,
-            "Q" => Denominations.QUEEN,
-            "K" => Denominations.KING,
-            _ => throw new ArgumentException(null, nameof(name))
-        };
-    }
-
-    public static class Denominations
-    {
-        public static readonly Denomination ACE = new("A", 1);
-        public static readonly Denomination TWO = new("2", 2);
-        public static readonly Denomination THREE = new("3", 3);
-        public static readonly Denomination FOUR = new("4", 4);
-        public static readonly Denomination FIVE = new("5", 5);
-        public static readonly Denomination SIX = new("6", 6);
-        public static readonly Denomination SEVEN = new("7", 7);
-        public static readonly Denomination EIGHT = new("8", 8);
-        public static readonly Denomination NINE = new("9", 9);
-        public static readonly Denomination TEN = new("10", 10);
-        public static readonly Denomination JACK = new("J", 11);
-        public static readonly Denomination QUEEN = new("Q", 12);
-        public static readonly Denomination KING = new("K", 13);
-    }
-
-    public class Suit : IComparable<Suit>
-    {
-        public string Name { get; init; }
-
-        public Suit(string name)
-        {
-            this.Name = name;
-        }
-
-        public static bool operator ==(Suit left, Suit right) => left.Equals(right);
-
-        public static bool operator !=(Suit left, Suit right) => !(left == right);
-
-        public int CompareTo(Suit? other) => other is null ? 1 : Name.CompareTo(other.Name);
-
-        public override bool Equals(object? obj) =>
-            (obj is Suit suit && Name.Equals(suit.Name)) ||
-            (obj is string name && Name.Equals(name));
-
-        public override int GetHashCode() => Name.GetHashCode();
-
-        public static Suit Parse(string name) => name.ToUpper() switch
-        {
-            "C" => Suits.CLUBS,
-            "D" => Suits.DIAMONDS,
-            "H" => Suits.HEARTS,
-            "S" => Suits.SPADES,
-            _ => throw new ArgumentException(null, nameof(name))
-        };
-    }
-
-    public static class Suits
-    {
-        public static readonly Suit CLUBS = new("C");
-        public static readonly Suit DIAMONDS = new("D");
-        public static readonly Suit HEARTS = new("H");
-        public static readonly Suit SPADES = new("S");
-    }
-
-    public class Card : IComparable<Card>
-    {
-        public Denomination Denomination { get; init; }
-        public Suit Suit { get; init; }
-        public string Name => Denomination.Name + Suit.Name;
-
-        public Card(Denomination denomination, Suit suit)
-        {
-            this.Denomination = denomination;
-            this.Suit = suit;
-        }
-
-        public static bool operator ==(Card left, Card right) => left.Equals(right);
-
-        public static bool operator !=(Card left, Card right) => !(left == right);
-
-        public int CompareTo(Card? other) => other is null ? 1 : (Denomination, Suit).CompareTo((other.Denomination, other.Suit));
-
-        public override bool Equals(object? obj) => obj is Card card && (Denomination, Suit).Equals((card.Denomination, card.Suit));
-
-        public override int GetHashCode() => (Denomination, Suit).GetHashCode();
-
-        public static Card Parse(string name)
-        {
-            string denomination = Regex.Match(name, "([AJQK]|[2-9]|10)", RegexOptions.IgnoreCase).Value;
-            string suit = Regex.Match(name, "([CDHS])", RegexOptions.IgnoreCase).Value;
-
-            if(denomination is null || suit is null) throw new ArgumentException(null, nameof(name));
-
-            return new Card(Denomination.Parse(denomination), Suit.Parse(suit));
+            
         }
     }
 
-    public class CardCollection : ICloneable
+    namespace Cards
     {
-        public List<Card> Cards { get; init; }
-        public Card FirstCard => Cards[0];
-        public int Count => Cards.Count;
-
-        public CardCollection(params Card[] cards)
+        public sealed record Denomination(string Identifier, string Name, int SequentialValue, int ArithmeticValue) : IComparable<Denomination>, IEquatable<string>
         {
-            this.Cards = new(cards);
-        }
+            public static readonly Denomination Ace = new("A", "Ace", 1, 1);
+            public static readonly Denomination Two = new("2", "Two", 2, 2);
+            public static readonly Denomination Three = new("3", "Three", 3, 3);
+            public static readonly Denomination Four = new("4", "Four", 4, 4);
+            public static readonly Denomination Five = new("5", "Five", 5, 5);
+            public static readonly Denomination Six = new("6", "Six", 6, 6);
+            public static readonly Denomination Seven = new("7", "Seven", 7, 7);
+            public static readonly Denomination Eight = new("8", "Eight", 8, 8);
+            public static readonly Denomination Nine = new("9", "Nine", 9, 9);
+            public static readonly Denomination Ten = new("10", "Ten", 10, 10);
+            public static readonly Denomination Jack = new("J", "Jack", 11, 10);
+            public static readonly Denomination Queen = new("Q", "Queen", 12, 10);
+            public static readonly Denomination King = new("K", "King", 13, 10);
 
-        public CardCollection(List<Card> cards)
-        {
-            this.Cards = cards;
-        }
+            public int CompareTo(Denomination? other) => other is null ? 1 : SequentialValue.CompareTo(other.SequentialValue);
 
-        public Card this[int index]
-        {
-            get => Cards[index];
-            set => Cards[index] = value;
-        }
+            public bool Precedes(Denomination? other) => CompareTo(other) < 0;
 
-        public void Remove(Card card) => Cards.Remove(card);
+            public bool IsPrevious(Denomination? other) => other is not null && other.SequentialValue - SequentialValue == 1;
 
-        public void Remove(int index) => Cards.RemoveAt(index);
+            public bool Follows(Denomination? other) => CompareTo(other) > 0;
 
-        public void Insert(int index, Card card) => Cards.Insert(index, card);
+            public bool IsNext(Denomination? other) => other is not null && SequentialValue - other.SequentialValue == 1;
 
-        public void Add(Card card) => Cards.Add(card);
+            public bool Equals(string? other) => other is not null && (Identifier.Equals(other, StringComparison.OrdinalIgnoreCase) || Name.Equals(other, StringComparison.OrdinalIgnoreCase));
 
-        public void Merge(CardCollection hand) => Cards.AddRange(hand.Cards);
+            public override string ToString() => Name;
 
-        public void Sort() => Cards.Sort();
+            public override int GetHashCode() => (Identifier, ArithmeticValue, SequentialValue).GetHashCode();
 
-        public object Clone() => new CardCollection { Cards = new List<Card>(Cards) }; //Deep clone the hand
+            public static bool operator <(Denomination? left, Denomination? right) => left is not null && left.Precedes(right);
 
-        public static CardCollection Merge(CardCollection hand, CardCollection cuts)
-        {
-            if(hand.Clone() is not CardCollection clone) throw new ArgumentNullException(nameof(hand));
+            public static bool operator <=(Denomination? left, Denomination? right) => left < right || left == right;
 
-            clone.Merge(cuts);
+            public static bool operator >(Denomination? left, Denomination? right) => left is not null && left.Follows(right);
 
-            return clone;
-        }
-    }
+            public static bool operator >=(Denomination? left, Denomination? right) => left > right || left == right;
 
-    public class Relationship
-    {
-        public List<Card> Cards { get; init; }
-        public Card FirstCard => Cards[0];
-        public int Count => Cards.Count;
-        public bool IsFifteen => Cards.Sum(card => card.Denomination.ArithmeticValue) == 15; //If the sum of all the cards' denominations is 15
-        public bool IsPair => Count == 2 && Cards //If the number of cards in the relationship is 2
-            .Skip(1)
-            .All(card => card.Denomination == FirstCard.Denomination); //And if the first and second cards' denominations match
-
-        public Relationship(params Card[] cards)
-        {
-            this.Cards = new(cards);
-        }
-
-        private static void CreateRelationships(List<Relationship> relationships, CardCollection hand, int count, List<Card> cards, int start, int position, int size)
-        {
-            if(position == size) //If the current relationship has reached the designated size
+            public static Denomination Parse(string? str) => str switch
             {
-                relationships.Add(new(cards.GetRange(0, size).ToArray())); //Add the relationship to the list
+                _ when Ace.Equals(str) => Ace,
+                _ when Two.Equals(str) => Two,
+                _ when Three.Equals(str) => Three,
+                _ when Four.Equals(str) => Four,
+                _ when Five.Equals(str) => Five,
+                _ when Six.Equals(str) => Six,
+                _ when Seven.Equals(str) => Seven,
+                _ when Eight.Equals(str) => Eight,
+                _ when Nine.Equals(str) => Nine,
+                _ when Ten.Equals(str) => Ten,
+                _ when Jack.Equals(str) => Jack,
+                _ when Queen.Equals(str) => Queen,
+                _ when King.Equals(str) => King,
+                _ => throw new ArgumentException($"{str} is not a valid Denomination", nameof(str))
+            };
+        }
+
+        public sealed record Suit(string Identifier, string Name) : IComparable<Suit>, IEquatable<string>
+        {
+            public static readonly Suit Clubs = new("C", "Clubs");
+            public static readonly Suit Diamonds = new("D", "Diamonds");
+            public static readonly Suit Hearts = new("H", "Hearts");
+            public static readonly Suit Spades = new("S", "Spades");
+
+            public int CompareTo(Suit? other) => other is not null ? Identifier.CompareTo(other.Identifier) : 1;
+
+            public bool Precedes(Suit? other) => CompareTo(other) < 0;
+
+            public bool Follows(Suit? other) => CompareTo(other) > 0;
+
+            public bool Equals(string? other) => other is not null && (Identifier.Equals(other, StringComparison.OrdinalIgnoreCase) || Name.Equals(other, StringComparison.OrdinalIgnoreCase));
+
+            public override string ToString() => Name;
+
+            public override int GetHashCode() => Identifier.GetHashCode();
+
+            public static bool operator <(Suit? left, Suit? right) => left is not null && left.Precedes(right);
+
+            public static bool operator <=(Suit? left, Suit? right) => left < right || left == right;
+
+            public static bool operator >(Suit? left, Suit? right) => left is not null && left.Follows(right);
+
+            public static bool operator >=(Suit? left, Suit? right) => left > right || left == right;
+
+            public static Suit Parse(string? str) => str switch
+            {
+                _ when Clubs.Equals(str) => Clubs,
+                _ when Diamonds.Equals(str) => Diamonds,
+                _ when Hearts.Equals(str) => Hearts,
+                _ when Spades.Equals(str) => Spades,
+                _ => throw new ArgumentException($"{str} is not a valid Suit", nameof(str))
+            };
+        }
+
+        public sealed partial record Card(Denomination Denomination, Suit Suit) : IComparable<Card>, IEquatable<Tuple<string, string>>, IEquatable<string>
+        {
+            public static readonly Card AceOfClubs = new(Denomination.Ace, Suit.Clubs);
+            public static readonly Card TwoOfClubs = new(Denomination.Two, Suit.Clubs);
+            public static readonly Card ThreeOfClubs = new(Denomination.Three, Suit.Clubs);
+            public static readonly Card FourOfClubs = new(Denomination.Four, Suit.Clubs);
+            public static readonly Card FiveOfClubs = new(Denomination.Five, Suit.Clubs);
+            public static readonly Card SixOfClubs = new(Denomination.Six, Suit.Clubs);
+            public static readonly Card SevenOfClubs = new(Denomination.Seven, Suit.Clubs);
+            public static readonly Card EightOfClubs = new(Denomination.Eight, Suit.Clubs);
+            public static readonly Card NineOfClubs = new(Denomination.Nine, Suit.Clubs);
+            public static readonly Card TenOfClubs = new(Denomination.Ten, Suit.Clubs);
+            public static readonly Card JackOfClubs = new(Denomination.Jack, Suit.Clubs);
+            public static readonly Card QueenOfClubs = new(Denomination.Queen, Suit.Clubs);
+            public static readonly Card KingOfClubs = new(Denomination.King, Suit.Clubs);
+            public static readonly Card AceOfDiamonds = new(Denomination.Ace, Suit.Diamonds);
+            public static readonly Card TwoOfDiamonds = new(Denomination.Two, Suit.Diamonds);
+            public static readonly Card ThreeOfDiamonds = new(Denomination.Three, Suit.Diamonds);
+            public static readonly Card FourOfDiamonds = new(Denomination.Four, Suit.Diamonds);
+            public static readonly Card FiveOfDiamonds = new(Denomination.Five, Suit.Diamonds);
+            public static readonly Card SixOfDiamonds = new(Denomination.Six, Suit.Diamonds);
+            public static readonly Card SevenOfDiamonds = new(Denomination.Seven, Suit.Diamonds);
+            public static readonly Card EightOfDiamonds = new(Denomination.Eight, Suit.Diamonds);
+            public static readonly Card NineOfDiamonds = new(Denomination.Nine, Suit.Diamonds);
+            public static readonly Card TenOfDiamonds = new(Denomination.Ten, Suit.Diamonds);
+            public static readonly Card JackOfDiamonds = new(Denomination.Jack, Suit.Diamonds);
+            public static readonly Card QueenOfDiamonds = new(Denomination.Queen, Suit.Diamonds);
+            public static readonly Card KingOfDiamonds = new(Denomination.King, Suit.Diamonds);
+            public static readonly Card AceOfHearts = new(Denomination.Ace, Suit.Hearts);
+            public static readonly Card TwoOfHearts = new(Denomination.Two, Suit.Hearts);
+            public static readonly Card ThreeOfHearts = new(Denomination.Three, Suit.Hearts);
+            public static readonly Card FourOfHearts = new(Denomination.Four, Suit.Hearts);
+            public static readonly Card FiveOfHearts = new(Denomination.Five, Suit.Hearts);
+            public static readonly Card SixOfHearts = new(Denomination.Six, Suit.Hearts);
+            public static readonly Card SevenOfHearts = new(Denomination.Seven, Suit.Hearts);
+            public static readonly Card EightOfHearts = new(Denomination.Eight, Suit.Hearts);
+            public static readonly Card NineOfHearts = new(Denomination.Nine, Suit.Hearts);
+            public static readonly Card TenOfHearts = new(Denomination.Ten, Suit.Hearts);
+            public static readonly Card JackOfHearts = new(Denomination.Jack, Suit.Hearts);
+            public static readonly Card QueenOfHearts = new(Denomination.Queen, Suit.Hearts);
+            public static readonly Card KingOfHearts = new(Denomination.King, Suit.Hearts);
+            public static readonly Card AceOfSpades = new(Denomination.Ace, Suit.Spades);
+            public static readonly Card TwoOfSpades = new(Denomination.Two, Suit.Spades);
+            public static readonly Card ThreeOfSpades = new(Denomination.Three, Suit.Spades);
+            public static readonly Card FourOfSpades = new(Denomination.Four, Suit.Spades);
+            public static readonly Card FiveOfSpades = new(Denomination.Five, Suit.Spades);
+            public static readonly Card SixOfSpades = new(Denomination.Six, Suit.Spades);
+            public static readonly Card SevenOfSpades = new(Denomination.Seven, Suit.Spades);
+            public static readonly Card EightOfSpades = new(Denomination.Eight, Suit.Spades);
+            public static readonly Card NineOfSpades = new(Denomination.Nine, Suit.Spades);
+            public static readonly Card TenOfSpades = new(Denomination.Ten, Suit.Spades);
+            public static readonly Card JackOfSpades = new(Denomination.Jack, Suit.Spades);
+            public static readonly Card QueenOfSpades = new(Denomination.Queen, Suit.Spades);
+            public static readonly Card KingOfSpades = new(Denomination.King, Suit.Spades);
+
+            [GeneratedRegex(
+                "^(?<denomination>[AJQK]|[2-9]|10|Ace|Two|Three|Four|Five|Six|Seven|Eight|Nine|Ten|Jack|Queen|King)(?:\\s?of\\s?)?(?<suit>[CDHS]|Clubs|Diamonds|Hearts|Spades)$",
+                RegexOptions.IgnoreCase | RegexOptions.Compiled,
+                "en-US")]
+            private static partial Regex Regex();
+
+            public string Identifier => Denomination.Identifier + Suit.Identifier;
+            public string Name => Denomination.Name + " of " + Suit.Name;
+
+            public int CompareTo(Card? other) => other is not null ? (Denomination, Suit).CompareTo((other.Denomination, other.Suit)) : 1;
+
+            public bool Precedes(Card? other) => CompareTo(other) < 0;
+
+            public bool Follows(Card? other) => CompareTo(other) > 0;
+
+            public bool Equals(Tuple<string, string>? other) => other is not null && Denomination.Equals(other.Item1) && Suit.Equals(other.Item2);
+
+            public bool Equals(string? other)
+            {
+                if(other is null) return false;
+
+                Match match = Regex().Match(other);
+
+                if(!match.Success) return false;
+
+                return Equals(Tuple.Create(match.Groups["denomination"].Value, match.Groups["suit"].Value));
             }
 
-            for(int index = start; index < count; index++) //Domain [a, b] where a is the index of the first card of the relationship and b is the number of cards in the hand
+            public override string ToString() => Name;
+
+            public override int GetHashCode() => (Denomination, Suit).GetHashCode();
+
+            public static Card Get(Denomination denomination, Suit suit) => (denomination, suit) switch
             {
-                cards.Insert(position, hand[index]); //Insert the card found at index into the card cache at position
+                _ when denomination == Denomination.Ace && suit == Suit.Clubs => AceOfClubs,
+                _ when denomination == Denomination.Two && suit == Suit.Clubs => TwoOfClubs,
+                _ when denomination == Denomination.Three && suit == Suit.Clubs => ThreeOfClubs,
+                _ when denomination == Denomination.Four && suit == Suit.Clubs => FourOfClubs,
+                _ when denomination == Denomination.Five && suit == Suit.Clubs => FiveOfClubs,
+                _ when denomination == Denomination.Six && suit == Suit.Clubs => SixOfClubs,
+                _ when denomination == Denomination.Seven && suit == Suit.Clubs => SevenOfClubs,
+                _ when denomination == Denomination.Eight && suit == Suit.Clubs => EightOfClubs,
+                _ when denomination == Denomination.Nine && suit == Suit.Clubs => NineOfClubs,
+                _ when denomination == Denomination.Ten && suit == Suit.Clubs => TenOfClubs,
+                _ when denomination == Denomination.Jack && suit == Suit.Clubs => JackOfClubs,
+                _ when denomination == Denomination.Queen && suit == Suit.Clubs => QueenOfClubs,
+                _ when denomination == Denomination.King && suit == Suit.Clubs => KingOfClubs,
+                _ when denomination == Denomination.Ace && suit == Suit.Diamonds => AceOfDiamonds,
+                _ when denomination == Denomination.Two && suit == Suit.Diamonds => TwoOfDiamonds,
+                _ when denomination == Denomination.Three && suit == Suit.Diamonds => ThreeOfDiamonds,
+                _ when denomination == Denomination.Four && suit == Suit.Diamonds => FourOfDiamonds,
+                _ when denomination == Denomination.Five && suit == Suit.Diamonds => FiveOfDiamonds,
+                _ when denomination == Denomination.Six && suit == Suit.Diamonds => SixOfDiamonds,
+                _ when denomination == Denomination.Seven && suit == Suit.Diamonds => SevenOfDiamonds,
+                _ when denomination == Denomination.Eight && suit == Suit.Diamonds => EightOfDiamonds,
+                _ when denomination == Denomination.Nine && suit == Suit.Diamonds => NineOfDiamonds,
+                _ when denomination == Denomination.Ten && suit == Suit.Diamonds => TenOfDiamonds,
+                _ when denomination == Denomination.Jack && suit == Suit.Diamonds => JackOfDiamonds,
+                _ when denomination == Denomination.Queen && suit == Suit.Diamonds => QueenOfDiamonds,
+                _ when denomination == Denomination.King && suit == Suit.Diamonds => KingOfDiamonds,
+                _ when denomination == Denomination.Ace && suit == Suit.Hearts => AceOfHearts,
+                _ when denomination == Denomination.Two && suit == Suit.Hearts => TwoOfHearts,
+                _ when denomination == Denomination.Three && suit == Suit.Hearts => ThreeOfHearts,
+                _ when denomination == Denomination.Four && suit == Suit.Hearts => FourOfHearts,
+                _ when denomination == Denomination.Five && suit == Suit.Hearts => FiveOfHearts,
+                _ when denomination == Denomination.Six && suit == Suit.Hearts => SixOfHearts,
+                _ when denomination == Denomination.Seven && suit == Suit.Hearts => SevenOfHearts,
+                _ when denomination == Denomination.Eight && suit == Suit.Hearts => EightOfHearts,
+                _ when denomination == Denomination.Nine && suit == Suit.Hearts => NineOfHearts,
+                _ when denomination == Denomination.Ten && suit == Suit.Hearts => TenOfHearts,
+                _ when denomination == Denomination.Jack && suit == Suit.Hearts => JackOfHearts,
+                _ when denomination == Denomination.Queen && suit == Suit.Hearts => QueenOfHearts,
+                _ when denomination == Denomination.King && suit == Suit.Hearts => KingOfHearts,
+                _ when denomination == Denomination.Ace && suit == Suit.Spades => AceOfSpades,
+                _ when denomination == Denomination.Two && suit == Suit.Spades => TwoOfSpades,
+                _ when denomination == Denomination.Three && suit == Suit.Spades => ThreeOfSpades,
+                _ when denomination == Denomination.Four && suit == Suit.Spades => FourOfSpades,
+                _ when denomination == Denomination.Five && suit == Suit.Spades => FiveOfSpades,
+                _ when denomination == Denomination.Six && suit == Suit.Spades => SixOfSpades,
+                _ when denomination == Denomination.Seven && suit == Suit.Spades => SevenOfSpades,
+                _ when denomination == Denomination.Eight && suit == Suit.Spades => EightOfSpades,
+                _ when denomination == Denomination.Nine && suit == Suit.Spades => NineOfSpades,
+                _ when denomination == Denomination.Ten && suit == Suit.Spades => TenOfSpades,
+                _ when denomination == Denomination.Jack && suit == Suit.Spades => JackOfSpades,
+                _ when denomination == Denomination.Queen && suit == Suit.Spades => QueenOfSpades,
+                _ when denomination == Denomination.King && suit == Suit.Spades => KingOfSpades,
+                _ => throw new ArgumentException($"{denomination.Name} of {suit.Name} is not a valid Card")
+            };
 
-                Relationship.CreateRelationships(relationships, hand, count, cards, index + 1, position + 1, size); //Create all possible relationships with the inserted card
+            public static Card Parse(string? str)
+            {
+                ArgumentNullException.ThrowIfNull(str);
 
-                cards.RemoveAt(cards.Count - 1); //Then remove the card from the cache
+                Match match = Regex().Match(str);
+
+                if(!match.Success) throw new ArgumentException($"{str} is not a valid Card", nameof(str));
+
+                Denomination denomination = Denomination.Parse(match.Groups["denomination"].Value);
+                Suit suit = Suit.Parse(match.Groups["suit"].Value);
+
+                return Get(denomination, suit);
             }
         }
 
-        public static List<Relationship> CreateRelationships(CardCollection hand)
+        public static class Hand
         {
-            List<Relationship> relationships = new();
-            int count = hand.Count;
-
-            for(int index = 2; index <= count; index++) //Domain [2, b] where b is the number of cards in the hand
+            public static List<Card> Parse(string? str)
             {
-                Relationship.CreateRelationships(relationships, hand, count, new(), 0, 0, index); //Create all possible relationships of size index
+                ArgumentNullException.ThrowIfNull(str);
+
+                List<Card> cards = new(str
+                    .Split(',')
+                    .Select(Card.Parse));
+
+                if(cards.Count == 0) throw new ArgumentException($"{str} is not a valid List<Card>", nameof(str));
+
+                return cards;
             }
 
-            return relationships;
-        }
-    }
+            public static List<List<Card>> GenerateCombinations(this List<Card> cards) =>
+                Enumerable
+                    .Range(0, 1 << cards.Count) //For each possible combination of n bits, where n is the number of cards
+                    .Select(bits => cards
+                        .Where((card, index) => ((1 << index) & bits) != 0) //If the bitmasked index isn't all zeros
+                        .ToList())
+                    .Where(combination => combination.Count >= 2) //If the size of the combination is greater than or equal to two
+                    .ToList();
 
-    public class HandParser
-    {
-        public CardCollection? Hand { get; set; }
-        public CardCollection? Cuts { get; set; }
+            public static List<List<Card>> GetFifteens(this List<List<Card>> combinations) =>
+                combinations
+                    .Where(combination => combination
+                        .Sum(card => card.Denomination.ArithmeticValue) == 15) //If the combination sums to fifteen
+                    .ToList();
 
-        public void Parse(string? hand)
-        {
-            if(hand is null) throw new ArgumentNullException(nameof(hand));
+            public static List<List<Card>> GetPairs(this List<List<Card>> combinations) =>
+                combinations
+                    .Where(combination => combination.Count == 2 && combination
+                        .Skip(1)
+                        .All(card => card.Denomination == combination[0].Denomination)) //If the rest of the combination is of the same denomination as the first card
+                    .ToList();
 
-            List<Card> cards = new(hand
-                .Split(' ')
-                .Select(name => Card.Parse(name)));
-
-            if(Hand == null)
+            public static List<Tuple<List<Card>, int>> GenerateRuns(this List<Card> cards, List<Tuple<List<Card>, int>> runs)
             {
-                Hand = new(cards);
-            }
-            else Cuts ??= new(cards);
-        }
-    }
+                int length = 1;
+                int multiplier = 1;
+                int count = 1;
+                List<Card> run = [];
 
-    public class HandCounter
-    {
-        public CardCollection Hand { get; init; }
-        public CardCollection Cuts { get; init; }
-        public CardCollection MergedHand { get; init; }
-        public List<Relationship> Relationships { get; init; }
-        public Dictionary<Card, int> FifteensPerCard { get; init; }
-        public Dictionary<Card, int> PairsPerCard { get; init; }
-        public Dictionary<Card, int> RunsPerCard { get; init; }
+                List<Card> copy = new(cards);
 
-        public HandCounter(CardCollection hand, CardCollection cuts)
-        {
-            this.Hand = hand;
-            this.Cuts = cuts;
-            this.MergedHand = CardCollection.Merge(hand, cuts);
+                Card? previous = null;
 
-            Hand.Sort();
-            Cuts.Sort();
-            MergedHand.Sort();
-
-            this.Relationships = Relationship.CreateRelationships(MergedHand);
-            this.FifteensPerCard = new();
-            this.PairsPerCard = new();
-            this.RunsPerCard = new();
-
-            MergedHand.Cards.ForEach(card =>
-            {
-                FifteensPerCard[card] = 0;
-                PairsPerCard[card] = 0;
-                RunsPerCard[card] = 0;
-            });
-        }
-
-        public int GetFifteens()
-        {
-            return Relationships.Sum(relationship =>
-            {
-                if(!relationship.IsFifteen)
+                for(int index = 0; index < cards.Count - 1; index++) //Domain [0, n-1], where n is the number of cards
                 {
-                    return 0;
-                }
+                    Card first = cards[index];
+                    Card second = cards[index + 1];
 
-                relationship.Cards
-                    .ForEach(card => FifteensPerCard[card] += 2);
-
-                return 2; //y = 2x where x is the number of relationships that sum to 15
-            });
-        }
-
-        public int GetPairs()
-        {
-            return Relationships
-                .Where(relationship => relationship.Count == 2) //Filter only relationships that have 2 cards
-                .Sum(relationship => //y = 2x where x is the number of relationships that are pairs
-                {
-                    if(!relationship.IsPair)
+                    if(first.Denomination == second.Denomination) //If the denominations of the first and second cards match
                     {
-                        return 0;
+                        if(previous is null || first.Denomination != previous.Denomination) //If the third card isn't the same denomination
+                        {
+                            multiplier *= 2; //Double the multiplier
+                        }
+                        else if(multiplier != 3) //If the multiplier isn't three
+                        {
+                            multiplier += multiplier / 2; //Add half the current multiplier
+                        }
+                        else //Otherwise
+                        {
+                            multiplier++; //Increment the multiplier
+                        }
+
+                        count++;
+
+                        previous = first;
                     }
-                    
-                    List<Card> cards = relationship.Cards;
-
-                    cards.ForEach(card => PairsPerCard[card] += 2);
-
-                    return 2;
-                });
-        }
-
-        private int GetRuns(CardCollection hand)
-        {
-            int length = 1; //Length of the run
-            int multiplier = 1; //The number of unique combinations the run makes
-
-            int count = hand.Count;
-
-            if(hand.Clone() is not CardCollection clone) throw new InvalidCastException();
-
-            int offset = 0;
-
-            Card? previous = null;
-
-            Dictionary<Card, int> multipliers = new();
-
-            hand.Cards.ForEach(card => multipliers[card] = 1);
-
-            for(int index = 0; index < count - 1; index++) //Domain [0, x-1] where x is the number of cards in the hand
-            {
-                Card current = hand[index];
-                Card next = hand[index + 1];
-
-                if(current.Denomination == next.Denomination) //If the first and second cards' denominations match
-                {
-                    if(previous is not null && current.Denomination == previous.Denomination) //And if the previous card exists and is the same denomination
+                    else if(first.Denomination.IsPrevious(second.Denomination)) //If the denomination of the first card is consecutive to the denomination of the second card
                     {
-                        int addend = multiplier == 3 ? 1 : (multiplier / 2); //And if there are 3 unique combinations already, add 1; otherwise, add half the number of unique combinations
-
-                        multiplier += addend;
-                        multipliers[next] = multipliers[current] = multipliers[previous] += addend;
+                        length++; //Increment the length
+                        count++;
                     }
-                    else
+                    else if(length < 3) //If the run ends, and the length isn't greater than or equal to three
                     {
-                        int factor = 2; //Otherwise, double the multiplier
-
-                        multiplier *= factor;
-                        multipliers[next] = multipliers[current] *= factor;
+                        length = 1; //Reset the length
+                        multiplier = 1; //Reset the multiplier
+                        run.Clear(); //Reset the run
                     }
 
-                    previous = current;
-                }
-                else if(current.Denomination.Precedes(next.Denomination)) //If the first card comes exactly one before the second card, i.e. 2, 3
-                {
-                    length++;
-                }
-                else if(length < 3) //If the run ends and isn't 3 or greater in length
-                {
-                    length = 1;
-                    multiplier = 1;
-                }
-                else break; //Otherwise, stop counting
+                    if(copy.Count > 0) //If there are more cards
+                    {
+                        copy.RemoveAt(0); //Remove the first card
+                    }
 
-                if(index - offset < clone.Count) //If there are more cards in the hand after this run
-                {
-                    clone.Remove(index - offset); //Remove the cards from this run
-
-                    offset++;
+                    if(index == count - 1) break; //If this is the end of this run, stop looping
                 }
+
+                if(length >= 3) //If a run was found
+                {
+                    run.AddRange(cards.GetRange(0, count)); //Add the cards to the list
+                    runs.Add(Tuple.Create(run, length * multiplier)); //Add the cards and point value to the list
+
+                    return GenerateRuns(copy, runs); //Check for more runs
+                }
+
+                return runs;
             }
 
-            if(length >= 3) //If the run exists
+            public static List<Tuple<Card, Card>> GetKnobs(this List<Card> cards, List<Card> cuts) =>
+                cards
+                    .Where(card => card.Denomination == Denomination.Jack && cuts.Any(cut => card.Suit == cut.Suit)) //If the card is a Jack and the suit matches any of the cuts
+                    .Zip(cuts, (card, cut) => Tuple.Create(card, cut)) //Add the card and cut
+                    .ToList();
+
+            public static List<Card> GetFlush(this List<Card> cards, List<Card> cuts)
             {
-                for(int index = 0; index < offset + 1; index++)
-                {
-                    Card card = hand[index];
+                if(!cards
+                    .Skip(1)
+                    .All(card => card.Suit == cards[0].Suit)) return []; //If the cards don't make a flush, return an empy list
 
-                    RunsPerCard[card] += length * multipliers[card];
-                }
+                List<Card> copy = new(cards); //Otherwise, make a copy of the cards
 
-                return (length * multiplier) + this.GetRuns(clone); //y1 = (x1 * z1) + y2 + y3 + ... + yn where x1 is the length of the run, z1 is the number of unique combinations the run makes, and yn is the point value of any subsequent runs
+                copy.AddRange(cuts
+                    .Where(cut => cut.Suit == cards[0].Suit)); //Add any cuts that match the suit
+
+                return copy;
             }
-
-            return 0;
-        }
-
-        public int GetRuns()
-        {
-            return this.GetRuns(MergedHand);
-        }
-
-        public int GetKnobs()
-        {
-            return Hand.Cards
-                .Where(card => card.Denomination == Denominations.JACK) //Filter only cards in the hand that are Jacks
-                .Sum(card => Cuts.Cards.Count(cut => card.Suit == cut.Suit));
-        }
-
-        public int GetFlush()
-        {
-            return Hand.Cards
-                .Skip(1)
-                .All(card => card.Suit == Hand.FirstCard.Suit) ? Hand.Count + Cuts.Cards
-                    .Count(cut => cut.Suit == Hand.FirstCard.Suit) : 0; //y = x + z; Domain [x, x+z] where x and z are the number of cards that match the suit of the first card from the hand and cut cards, respectively
         }
     }
 }
